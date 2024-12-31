@@ -20,11 +20,14 @@ def sequence(iterable):
     return (iterable if isinstance(iterable, collections.abc.Sequence)
             else tuple(iterable))
 
-
-def removeall(item, seq):
-    """Return a copy of seq (or string) with all occurences of item removed."""
+def remove_all(item, seq):
+    """Return a copy of seq (or string) with all occurrences of item removed."""
     if isinstance(seq, str):
         return seq.replace(item, '')
+    elif isinstance(seq, set):
+        rest = seq.copy()
+        rest.remove(item)
+        return rest
     else:
         return [x for x in seq if x != item]
 
@@ -825,9 +828,6 @@ import random
 from collections import defaultdict, Counter
 
 import networkx as nx
-from utils import (remove_all, unique, first, argmax, probability, isnumber,
-                   issequence, Expr, expr, subexpressions, extend)
-
 
 class KB:
     """A knowledge base to which you can tell and ask sentences.
@@ -907,6 +907,18 @@ def tt_entails(kb, alpha):
     symbols = list(prop_symbols(kb & alpha))
     return tt_check_all(kb, alpha, symbols, {})
 
+def is_variable(x):
+    """A variable is an Expr with no args and a lowercase symbol as the op."""
+    return isinstance(x, Expr) and not x.args and x.op[0].islower()
+
+
+
+def variables(s):
+    """Return a set of the variables in expression s.
+    >>> variables(expr('F(x, x) & G(x, y) & H(y, z) & R(A, z, 2)')) == {x, y, z}
+    True
+    """
+    return {x for x in subexpressions(s) if is_variable(x)}
 
 def tt_check_all(kb, alpha, symbols, model):
     """Auxiliary routine to implement tt_entails."""
@@ -921,6 +933,11 @@ def tt_check_all(kb, alpha, symbols, model):
         P, rest = symbols[0], symbols[1:]
         return (tt_check_all(kb, alpha, rest, extend(model, P, True)) and
                 tt_check_all(kb, alpha, rest, extend(model, P, False)))
+
+
+def extend(s, var, val):
+    """Copy dict s and extend it by setting var to val; return copy."""
+    return {**s, var: val}
 
 
 def prop_symbols(x):
@@ -1038,6 +1055,22 @@ def to_cnf(s):
     s = move_not_inwards(s)  # Step 3
     return distribute_and_over_or(s)  # Step 4
 
+
+
+def is_symbol(s):
+    """A string s is a symbol if it starts with an alphabetic char.
+    >>> is_symbol('R2D2')
+    True
+    """
+    return isinstance(s, str) and s[:1].isalpha()
+
+
+def is_prop_symbol(s):
+    """A proposition logic symbol is an initial-uppercase string.
+    >>> is_prop_symbol('exe')
+    False
+    """
+    return is_symbol(s) and s[0].isupper()
 
 def eliminate_implications(s):
     """Change implications into equivalent form with only &, |, and ~ as logical operators."""
@@ -1212,7 +1245,21 @@ def pl_resolve(ci, cj):
 
 # ______________________________________________________________________________
 
-
+def is_definite_clause(s):
+    """Returns True for exprs s of the form A & B & ... & C ==> D,
+    where all literals are positive. In clause form, this is
+    ~A | ~B | ... | ~C | D, where exactly one clause is positive.
+    >>> is_definite_clause(expr('Farmer(Mac)'))
+    True
+    """
+    if is_symbol(s.op):
+        return True
+    elif s.op == '==>':
+        antecedent, consequent = s.args
+        return is_symbol(consequent.op) and all(is_symbol(arg.op) for arg in conjuncts(antecedent))
+    else:
+        return False
+    
 class PropDefiniteKB(PropKB):
     """A KB of propositional definite clauses."""
 
