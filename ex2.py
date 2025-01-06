@@ -1,58 +1,56 @@
+ids = ['319000725', '207036211']
 
-ids = ['319000725','207036211']
 
 class GringottsController:
 
     def __init__(self, map_shape, harry_loc, initial_observations):
 
         # Timeout: 60 seconds
-        self.counter=0
-        self.m=map_shape[0] #num rows
-        self.n=map_shape[1] #num columns
-        self.max_steps=5+3*(self.m+self.n) #maximum number of rounds
-        self.current_place=harry_loc
-        self.variables={}
-        self.actions={}
-        self.harry_initial_loc=harry_loc
-        self.generate_variables(initial_observations)#initialize the variabls including the initial and goal variabls
+        self.counter = 0
+        self.m = map_shape[0]  # num rows
+        self.n = map_shape[1]  # num columns
+        self.max_steps = 5 + 3 * (self.m + self.n)  # maximum number of rounds
+        self.current_place = harry_loc
+        self.variables = {}
+        self.actions = {}
+        self.harry_initial_loc = harry_loc
+        self.generate_variables(initial_observations)  # initialize the variabls including the initial and goal variabls
 
-    def create_variable(self, name,state,direction,vault,dragon,i,j):
+    def create_variable(self, name, state, direction, vault, dragon, i, j):
         """
         יוצר משתנה עם שם ייחודי ותווית זמן.
         """
         full_name = f"{name}"
-        self.variables[full_name]=False
-        if state=="safe":
-            if direction=="up":
+        self.variables[full_name] = False
+        if state == "safe":
+            if direction == "up":
                 if 0 <= i - 1:
                     self.variables[full_name] = True
-            elif direction=="down":
-                if i + 1 <= self.m-1:
+            elif direction == "down":
+                if i + 1 <= self.m - 1:
                     self.variables[full_name] = True
-            elif direction=="left":
-                if j-1 >= 0:
+            elif direction == "left":
+                if j - 1 >= 0:
                     self.variables[full_name] = True
             else:
-                if j+1 <= self.n-1:
+                if j + 1 <= self.n - 1:
                     self.variables[full_name] = True
-        elif state=="harry":
-            if (i,j) == self.harry_initial_loc:
-                self.variables[full_name]=True
-        elif state=="dragon":
-            if (i,j) == dragon:
-                self.variables[full_name]=True
-        elif state=="trap":
-            self.variables[full_name] = True
-        elif state=="vault":
-            if (i,j) == vault:
+        elif state == "harry":
+            if (i, j) == self.harry_initial_loc:
                 self.variables[full_name] = True
-        elif state=="checked_vault":
+        elif state == "dragon":
+            if (i, j) == dragon:
+                self.variables[full_name] = True
+        elif state == "trap":
+            self.variables[full_name] = True
+        elif state == "vault":
+            if (i, j) == vault:
+                self.variables[full_name] = True
+        elif state == "checked_vault":
             self.variables[full_name] = False
         elif state == "visited":
             if (i, j) == self.harry_initial_loc:
                 self.variables[full_name] = True
-
-
 
     def create_action(self, name):
         """
@@ -61,15 +59,14 @@ class GringottsController:
         full_name = f"{name}"
         self.actions[full_name] = False
 
-
-    def generate_variables(self,initial_observations):
+    def generate_variables(self, initial_observations):
         """
         מייצר את כל המשתנים האפשריים עבור כל אריח בלוח ולכל שלב זמן.
         """
-        vault=None
-        dragon=None
-        flag_Sulfur=False
-        if len(initial_observations)>0:
+        vault = None
+        dragon = None
+        flag_Sulfur = False
+        if len(initial_observations) > 0:
             for t in initial_observations:
                 x = t[0]
                 if x == 'vault':
@@ -80,24 +77,25 @@ class GringottsController:
                     dragon = y
                 elif x == 'sulfur':
                     flag_Sulfur = True
-        #for t in range(self.max_steps+1):
+        # for t in range(self.max_steps+1):
         for i in range(self.m):
             for j in range(self.n):
                 # משתני מצב למשבצת
                 for direction in ["up", "down", "left", "right"]:
-                    self.create_variable(f"safe(Tile_{i}_{j}, {direction})","safe","direction" ,None,None
-                                         ,i,j)#לא חורג מגבולות המפה
-                self.create_variable(f"trap(Tile_{i}_{j})","trap",None,vault,dragon,i,j)
-                self.create_variable(f"dragon(Tile_{i}_{j})","dragon",None,vault,dragon,i,j)
-                self.create_variable(f"vault(Tile_{i}_{j})","vault",None,vault,dragon,i,j)
-                self.create_variable(f"checked_vault(Tile_{i}_{j})", "checked_vault", None, vault, dragon, i, j)#TODO:check if really necceary
-                self.create_variable(f"harry(Tile_{i}_{j})", "harry",None,vault,dragon,i,j)
+                    self.create_variable(f"safe(Tile_{i}_{j}, {direction})", "safe", "direction", None, None
+                                         , i, j)  # לא חורג מגבולות המפה
+                self.create_variable(f"trap(Tile_{i}_{j})", "trap", None, vault, dragon, i, j)
+                self.create_variable(f"dragon(Tile_{i}_{j})", "dragon", None, vault, dragon, i, j)
+                self.create_variable(f"vault(Tile_{i}_{j})", "vault", None, vault, dragon, i, j)
+                self.create_variable(f"checked_vault(Tile_{i}_{j})", "checked_vault", None, vault, dragon, i,
+                                     j)  # TODO:check if really necceary
+                self.create_variable(f"harry(Tile_{i}_{j})", "harry", None, vault, dragon, i, j)
                 self.create_variable(f"visited(Tile_{i}_{j})", "visited", None, vault, dragon, i, j)
-                #self.create_variable(f"sulfur(Tile_{i}_{j})", "sulfur", None, vault,dragon,i,j, t)
-        #self.create_variable(f"collected_hallow", "collected_hallow", None, vault, dragon, 0, 0)#intialize goal variable
-        #t=0 # after initialize all the sulfur variabls to True, if there is no sulfur in harrys current location that implies that we can update the sulfures variabls near the location to False
+                # self.create_variable(f"sulfur(Tile_{i}_{j})", "sulfur", None, vault,dragon,i,j, t)
+        # self.create_variable(f"collected_hallow", "collected_hallow", None, vault, dragon, 0, 0)#intialize goal variable
+        # t=0 # after initialize all the sulfur variabls to True, if there is no sulfur in harrys current location that implies that we can update the sulfures variabls near the location to False
         if not flag_Sulfur:
-             self.trap_Update()
+            self.trap_Update()
 
     # def generate_actions(self):
     #     """
@@ -115,29 +113,28 @@ class GringottsController:
     #             self.create_action(f"destroy trap(Tile_{i}_{j})")
 
     def trap_Update(self):
-        x=self.current_place[0]#num row of the current location of harry
-        y=self.current_place[1]#num col of the current location of harry
-        if 0<=x-1:# the tile from above harry current location
-            self.variables[f"trap(Tile_{x-1}_{y})"] = False
-        if x+1<=self.m-1:# the tile  under harry current location
+        x = self.current_place[0]  # num row of the current location of harry
+        y = self.current_place[1]  # num col of the current location of harry
+        if 0 <= x - 1:  # the tile from above harry current location
+            self.variables[f"trap(Tile_{x - 1}_{y})"] = False
+        if x + 1 <= self.m - 1:  # the tile  under harry current location
             self.variables[f"trap(Tile_{x + 1}_{y})"] = False
-        if y+1<=self.n-1:# the tile from the right harrys current location
-            self.variables[f"trap(Tile_{x}_{y+1})"] = False
-        if 0<=y-1:# the tile from the left harrys current location
+        if y + 1 <= self.n - 1:  # the tile from the right harrys current location
+            self.variables[f"trap(Tile_{x}_{y + 1})"] = False
+        if 0 <= y - 1:  # the tile from the left harrys current location
             self.variables[f"trap(Tile_{x}_{y - 1})"] = False
 
-
-    def dragon_Update(self,dragon_loc):
+    def dragon_Update(self, dragon_loc):
         """
         update new dragons discoveres
         dragon_loc is the new location we discovered and delivered to this function
         t is the timestamp of the discovery
         """
-        i=dragon_loc[0]
-        j=dragon_loc[1]
+        i = dragon_loc[0]
+        j = dragon_loc[1]
         self.variables[f"dragon(Tile_{i}_{j})"] = True
 
-    def vault_Update(self,vault_loc):
+    def vault_Update(self, vault_loc):
         """
         update new dragons discoveres
         dragon_loc is the new location we discovered and delivered to this function
@@ -147,7 +144,7 @@ class GringottsController:
         j = vault_loc[1]
         self.variables[f"vault(Tile_{i}_{j})"] = True
 
-    def checked_vault_Update(self,vault_loc):
+    def checked_vault_Update(self, vault_loc):
         """
         update that we checked that vault in order to prevent double checks in the same vault
         """
@@ -156,25 +153,24 @@ class GringottsController:
         self.variables[f"visited(Tile_{i}_{j})"] = True
         self.variables[f"checked_vault(Tile_{i}_{j})"] = True
 
-
-    def harry_Update(self,harry_new_loc):
-        harry_old_loc=self.current_place
-        x_old=harry_old_loc[0]
-        y_old=harry_old_loc[1]
-        i=harry_new_loc[0]
-        j=harry_new_loc[1]
-        self.current_place=harry_new_loc
+    def harry_Update(self, harry_new_loc):
+        harry_old_loc = self.current_place
+        x_old = harry_old_loc[0]
+        y_old = harry_old_loc[1]
+        i = harry_new_loc[0]
+        j = harry_new_loc[1]
+        self.current_place = harry_new_loc
         self.variables[f"harry(Tile_{x_old}_{y_old})"] = False
         self.variables[f"harry(Tile_{i}_{j})"] = True
         self.variables[f"visited(Tile_{i}_{j})"] = True
 
-    def destroy_trap(self,trap_loc):
+    def destroy_trap(self, trap_loc):
         """
         destroy a trap in trap_loc
         """
         i = trap_loc[0]
         j = trap_loc[1]
-        self.variables[ f"trap(Tile_{i}_{j})"] = False
+        self.variables[f"trap(Tile_{i}_{j})"] = False
 
     def get_possible_actions(self):
         """
@@ -185,7 +181,8 @@ class GringottsController:
         curr_x, curr_y = self.current_place
 
         # Check if we can collect from current location
-        if self.variables[f"vault(Tile_{curr_x}_{curr_y})"] and not self.variables[f"checked_vault(Tile_{curr_x}_{curr_y})"]:
+        if self.variables[f"vault(Tile_{curr_x}_{curr_y})"] and not self.variables[
+            f"checked_vault(Tile_{curr_x}_{curr_y})"]:
             possible_actions.append(("collect",))
 
         # Check possible moves in all directions
@@ -214,28 +211,26 @@ class GringottsController:
         """
         min_distance = float('inf')
         best_neighbor = None
-
-        # First try to find unvisited tiles
+        # First try to find unchecked vaults
         for i in range(self.m):
             for j in range(self.n):
-                # Skip known dangerous locations
-                if self.variables[f"dragon(Tile_{i}_{j})"]:
-                    continue
-
-                if not self.variables[f"visited(Tile_{i}_{j})"]:
-                    distance = abs(x - i) + abs(y - j)  # Manhattan distance
+                if (self.variables[f"vault(Tile_{i}_{j})"] and
+                        not self.variables[f"checked_vault(Tile_{i}_{j})"]):
+                    distance = abs(x - i) + abs(y - j)
                     if distance < min_distance:
                         min_distance = distance
                         best_neighbor = (i, j)
 
         if best_neighbor is None:
-            # If no unvisited tiles, try to find unchecked vaults
+            # If no unchecked vaults, try to find unvisited tiles
             for i in range(self.m):
                 for j in range(self.n):
-                    if (self.variables[f"vault(Tile_{i}_{j})"] and
-                            not self.variables[f"checked_vault(Tile_{i}_{j})"] and
-                            not self.variables[f"dragon(Tile_{i}_{j})"]):
-                        distance = abs(x - i) + abs(y - j)
+                    # Skip known dangerous locations
+                    if self.variables[f"dragon(Tile_{i}_{j})"]:
+                        continue
+
+                    if not self.variables[f"visited(Tile_{i}_{j})"]:
+                        distance = abs(x - i) + abs(y - j)  # Manhattan distance
                         if distance < min_distance:
                             min_distance = distance
                             best_neighbor = (i, j)
@@ -304,7 +299,6 @@ class GringottsController:
                     self.destroy_trap(vault)
                     return action
 
-
         # Priority 3: Move towards nearest unvisited tile
         next_target = self.get_direction_to_nearest_unvisited(self.current_place[0], self.current_place[1])
         if next_target:
@@ -318,7 +312,7 @@ class GringottsController:
 
         # Priority 4: Destroy any reachable trap
         for action in possible_actions:
-            if action[0] == "destroy" :
+            if action[0] == "destroy":
                 self.destroy_trap(action[1])
                 return action
 
@@ -344,5 +338,3 @@ class GringottsController:
             action = fallback_moves[0]  # Take first available move
             self.harry_Update(action[1])
             return action
-
-
