@@ -1,6 +1,7 @@
 
 import ex2
 import time
+import harder_inputs_100
 import inputs
 
 CODES_NEW = {'passage': 0, 'dragon': 1, 'vault': 2, 'trap': 3, 'hollow_vault': 4, 'vault_trap': 5, 'dragon_trap': 6,
