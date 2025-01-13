@@ -4,24 +4,27 @@ ids = ['319000725', '207036211']
 class GringottsController:
 
     def __init__(self, map_shape, harry_loc, initial_observations):
-
         # Timeout: 60 seconds
         self.counter = 0
         self.m = map_shape[0]  # num rows
         self.n = map_shape[1]  # num columns
         self.max_steps = 5 + 3 * (self.m + self.n)  # maximum number of rounds
         self.current_place = harry_loc
+        self.last_place = None  # New attribute to track the last visited tile
         self.variables = {}
         self.actions = {}
         self.harry_initial_loc = harry_loc
-        self.generate_variables(initial_observations)  # initialize the variabls including the initial and goal variabls
+        self.detected_dragons = set()  # set of dragons detected in the game
+        self.suspected_traps_by_tile = {}
+        self.generate_variables(initial_observations)  # initialize the variables including the initial and goal variables
 
-    def create_variable(self, name, state, direction, vault, dragon, i, j):
+    def create_variable(self, name, state, direction, vaults, dragons, i, j):
         """
         יוצר משתנה עם שם ייחודי ותווית זמן.
         """
         full_name = f"{name}"
         self.variables[full_name] = False
+
         if state == "safe":
             if direction == "up":
                 if 0 <= i - 1:
@@ -39,18 +42,37 @@ class GringottsController:
             if (i, j) == self.harry_initial_loc:
                 self.variables[full_name] = True
         elif state == "dragon":
-            if (i, j) == dragon:
+            if (i, j) in dragons:
                 self.variables[full_name] = True
         elif state == "trap":
-            self.variables[full_name] = True
+            # במשבצת ההתחלתית, trap מוגדר כ-False
+            self.variables[full_name] = False
+        elif state == "suspected_trap":
+            # במשבצת ההתחלתית, suspected_trap מוגדר כ-False
+            if (i, j) == self.harry_initial_loc:
+                self.variables[full_name] = False
+            else:
+                self.variables[full_name] = True
         elif state == "vault":
-            if (i, j) == vault:
+            if (i, j) in vaults:
                 self.variables[full_name] = True
         elif state == "checked_vault":
             self.variables[full_name] = False
         elif state == "visited":
             if (i, j) == self.harry_initial_loc:
                 self.variables[full_name] = True
+        elif state == "score":
+            self.variables[full_name] = 4  # מקסימום ניקוד למשבצת
+            if not (0 <= i - 1):
+                self.variables[full_name] -= 1
+            if not (i + 1 <= self.m - 1):
+                self.variables[full_name] -= 1
+            if not (j - 1 >= 0):
+                self.variables[full_name] -= 1
+            if not (j + 1 <= self.n - 1):
+                self.variables[full_name] -= 1
+            if self.variables[f"dragon(Tile_{i}_{j})"]:
+                self.variables[full_name] = float('-inf')  # ניקוד מינימלי למשבצת עם דרקון
 
     def create_action(self, name):
         """
@@ -63,66 +85,74 @@ class GringottsController:
         """
         מייצר את כל המשתנים האפשריים עבור כל אריח בלוח ולכל שלב זמן.
         """
-        vault = None
-        dragon = None
+        vaults = []  # רשימה לתיבות
+        dragons = []  # רשימה לדרקונים
         flag_Sulfur = False
-        if len(initial_observations) > 0:
-            for t in initial_observations:
-                x = t[0]
-                if x == 'vault':
-                    y = t[1]
-                    vault = y
-                elif x == 'dragon':
-                    y = t[1]
-                    dragon = y
-                elif x == 'sulfur':
+
+        # איסוף תצפיות ראשוניות
+        if initial_observations:
+            for obs in initial_observations:
+                obs_type = obs[0]
+                if obs_type == 'vault':
+                    obs_loc=obs[1]
+                    vaults.append(obs_loc)
+                elif obs_type == 'dragon':
+                    obs_loc=obs[1]
+                    dragons.append(obs_loc)
+                elif obs_type == 'sulfur':
                     flag_Sulfur = True
-        # for t in range(self.max_steps+1):
+
+        # יצירת משתנים
         for i in range(self.m):
             for j in range(self.n):
-                # משתני מצב למשבצת
                 for direction in ["up", "down", "left", "right"]:
-                    self.create_variable(f"safe(Tile_{i}_{j}, {direction})", "safe", "direction", None, None
-                                         , i, j)  # לא חורג מגבולות המפה
-                self.create_variable(f"trap(Tile_{i}_{j})", "trap", None, vault, dragon, i, j)
-                self.create_variable(f"dragon(Tile_{i}_{j})", "dragon", None, vault, dragon, i, j)
-                self.create_variable(f"vault(Tile_{i}_{j})", "vault", None, vault, dragon, i, j)
-                self.create_variable(f"checked_vault(Tile_{i}_{j})", "checked_vault", None, vault, dragon, i,
-                                     j)  # TODO:check if really necceary
-                self.create_variable(f"harry(Tile_{i}_{j})", "harry", None, vault, dragon, i, j)
-                self.create_variable(f"visited(Tile_{i}_{j})", "visited", None, vault, dragon, i, j)
-                # self.create_variable(f"sulfur(Tile_{i}_{j})", "sulfur", None, vault,dragon,i,j, t)
-        # self.create_variable(f"collected_hallow", "collected_hallow", None, vault, dragon, 0, 0)#intialize goal variable
-        # t=0 # after initialize all the sulfur variabls to True, if there is no sulfur in harrys current location that implies that we can update the sulfures variabls near the location to False
+                    self.create_variable(f"safe(Tile_{i}_{j}, {direction})", "safe", direction, vaults, dragons, i, j)
+                self.create_variable(f"trap(Tile_{i}_{j})", "trap", None, vaults, dragons, i, j)
+                self.create_variable(f"dragon(Tile_{i}_{j})", "dragon", None, vaults, dragons, i, j)
+                self.create_variable(f"vault(Tile_{i}_{j})", "vault", None, vaults, dragons, i, j)
+                self.create_variable(f"checked_vault(Tile_{i}_{j})", "checked_vault", None, vaults, dragons, i, j)
+                self.create_variable(f"harry(Tile_{i}_{j})", "harry", None, vaults, dragons, i, j)
+                self.create_variable(f"visited(Tile_{i}_{j})", "visited", None, vaults, dragons, i, j)
+                self.create_variable(f"score(Tile_{i}_{j})", "score", None, vaults, dragons, i, j)
+                self.create_variable(f"suspected_trap(Tile_{i}_{j})", "suspected_trap", None, vaults, dragons, i, j)
+
+        # עדכון לפי דרקונים ותיבות
+        self.trap_Update(flag_Sulfur)
+        if dragons:
+            for dragon in dragons:
+                self.update_score(dragon)
+
+
+    def trap_Update(self,flag_Sulfur):
+        x, y = self.current_place  # the location we smelled the sulfur
+
+        # אם אין גופרית, המשבצות מסביב לא יכולות להיות מלכודות
         if not flag_Sulfur:
-            self.trap_Update()
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < self.m and 0 <= ny < self.n:
+                    self.variables[f"suspected_trap(Tile_{nx}_{ny})"] = False
 
-    # def generate_actions(self):
-    #     """
-    #     מייצר פעולות אפשריות עם משתנים עבור כל שלב זמן.
-    #     """
-    #     for i in range(self.m):
-    #         for j in range(self.n):
-    #             # פעולות תנועה
-    #             self.create_action(f"move_up(Tile_{i}_{j})")#from tile(i,j)
-    #             self.create_action(f"move_down(Tile_{i}_{j})")
-    #             self.create_action(f"move_left(Tile_{i}_{j})")
-    #             self.create_action(f"move_right(Tile_{i}_{j})")
-    #             # פעולות מיוחדות
-    #             self.create_action(f"collect(Tile_{i}_{j})")
-    #             self.create_action(f"destroy trap(Tile_{i}_{j})")
+        # אם כן ריח גופרית, שמור את כל הסביבה כרשימת חשודים
+        else:
+            self.suspected_traps_by_tile[(x, y)] = []
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < self.m and 0 <= ny < self.n:
+                    self.suspected_traps_by_tile[(x, y)].append((nx, ny))
 
-    def trap_Update(self):
-        x = self.current_place[0]  # num row of the current location of harry
-        y = self.current_place[1]  # num col of the current location of harry
-        if 0 <= x - 1:  # the tile from above harry current location
-            self.variables[f"trap(Tile_{x - 1}_{y})"] = False
-        if x + 1 <= self.m - 1:  # the tile  under harry current location
-            self.variables[f"trap(Tile_{x + 1}_{y})"] = False
-        if y + 1 <= self.n - 1:  # the tile from the right harrys current location
-            self.variables[f"trap(Tile_{x}_{y + 1})"] = False
-        if 0 <= y - 1:  # the tile from the left harrys current location
-            self.variables[f"trap(Tile_{x}_{y - 1})"] = False
+        # ניתוח רשימות החשודים
+        for key, suspects in list(self.suspected_traps_by_tile.items()):#TODO: check if it works well
+            # הסר משבצות שלא יכולות להיות מלכודות
+            self.suspected_traps_by_tile[key] = [tile for tile in suspects if
+                                                 self.variables[f"suspected_trap(Tile_{tile[0]}_{tile[1]})"]]
+
+            # אם נשאר רק חשוד אחד, הוא מלכודת
+            if len(self.suspected_traps_by_tile[key]) == 1:#key is the location we smelled the sulfur and suspect is the tile we think might be with a trap
+                trap_tile = self.suspected_traps_by_tile[key][0]
+                self.variables[f"trap(Tile_{trap_tile[0]}_{trap_tile[1]})"] = True
+                self.variables[f"suspected_trap(Tile_{trap_tile[0]}_{trap_tile[1]})"] = False
+                del self.suspected_traps_by_tile[key]
 
     def dragon_Update(self, dragon_loc):
         """
@@ -133,6 +163,7 @@ class GringottsController:
         i = dragon_loc[0]
         j = dragon_loc[1]
         self.variables[f"dragon(Tile_{i}_{j})"] = True
+        self.variables[f"score(Tile_{i}_{j})"]=float('-inf')
 
     def vault_Update(self, vault_loc):
         """
@@ -154,7 +185,12 @@ class GringottsController:
         self.variables[f"checked_vault(Tile_{i}_{j})"] = True
 
     def harry_Update(self, harry_new_loc):
+        """
+        Update Harry's current location and the last place.
+        also update the current tile's score
+        """
         harry_old_loc = self.current_place
+        self.last_place = harry_old_loc  # Track the last place
         x_old = harry_old_loc[0]
         y_old = harry_old_loc[1]
         i = harry_new_loc[0]
@@ -163,6 +199,9 @@ class GringottsController:
         self.variables[f"harry(Tile_{x_old}_{y_old})"] = False
         self.variables[f"harry(Tile_{i}_{j})"] = True
         self.variables[f"visited(Tile_{i}_{j})"] = True
+        self.variables[f"score(Tile_{i}_{j})"] = self.variables[f"score(Tile_{i}_{j})"]-1 #update our current tile score
+
+
 
     def destroy_trap(self, trap_loc):
         """
@@ -170,6 +209,7 @@ class GringottsController:
         """
         i = trap_loc[0]
         j = trap_loc[1]
+        self.variables[f"suspected_trap(Tile_{i}_{j})"] = False
         self.variables[f"trap(Tile_{i}_{j})"] = False
 
     def get_possible_actions(self):
@@ -195,8 +235,9 @@ class GringottsController:
                 if self.variables[f"dragon(Tile_{new_x}_{new_y})"]:
                     continue
 
-                # If there's a trap, only offer destroy action
-                if self.variables[f"trap(Tile_{new_x}_{new_y})"]:
+                # If there's a trap or suspected trap, offer destroy action
+                if self.variables[f"suspected_trap(Tile_{new_x}_{new_y})"] or self.variables[
+                    f"trap(Tile_{new_x}_{new_y})"]:
                     possible_actions.append(("destroy", (new_x, new_y)))
                 else:
                     # Only add move action if we're certain it's safe
@@ -204,14 +245,16 @@ class GringottsController:
 
         return possible_actions
 
-    def get_direction_to_nearest_unvisited(self, x, y):
+
+    def get_direction_to_nearest_unvisited_vault(self, x, y):
         """
         Returns the direction to move towards the nearest unvisited tile
-        with improved safety checks
+        while avoiding the last visited tile.
         """
         min_distance = float('inf')
         best_neighbor = None
-        # First try to find unchecked vaults
+
+        # First, try to find unchecked vaults
         for i in range(self.m):
             for j in range(self.n):
                 if (self.variables[f"vault(Tile_{i}_{j})"] and
@@ -222,23 +265,9 @@ class GringottsController:
                         best_neighbor = (i, j)
 
         if best_neighbor is None:
-            # If no unchecked vaults, try to find unvisited tiles
-            for i in range(self.m):
-                for j in range(self.n):
-                    # Skip known dangerous locations
-                    if self.variables[f"dragon(Tile_{i}_{j})"]:
-                        continue
-
-                    if not self.variables[f"visited(Tile_{i}_{j})"]:
-                        distance = abs(x - i) + abs(y - j)  # Manhattan distance
-                        if distance < min_distance:
-                            min_distance = distance
-                            best_neighbor = (i, j)
-
-        if best_neighbor is None:
             return None
 
-        # Find the best immediate move towards the target
+        # Find the best immediate move towards the target while avoiding the last place
         curr_x, curr_y = x, y
         target_x, target_y = best_neighbor
 
@@ -247,13 +276,28 @@ class GringottsController:
             new_x, new_y = curr_x + dx, curr_y + dy
             if 0 <= new_x < self.m and 0 <= new_y < self.n:
                 # Only consider moves that don't lead to known dangers
-                if not self.variables[f"dragon(Tile_{new_x}_{new_y})"]:
-                    new_distance = abs(new_x - target_x) + abs(new_y - target_y)
+                if not self.variables[f"dragon(Tile_{new_x}_{new_y})"] and not self.variables[f"suspected_trap(Tile_{new_x}_{new_y})"]:#TODO:check without this change
+                    new_distance = abs(new_x - target_x) + abs(new_y - target_y) - self.variables[f"score(Tile_{new_x}_{new_y})"]#changed- minimize the score and distance TODO:check
                     possible_next_moves.append(((new_x, new_y), new_distance))
 
         if possible_next_moves:
             return min(possible_next_moves, key=lambda x: x[1])[0]
         return None
+
+    def update_score(self,dragon):
+        """
+        update the score of tile if there is a dragon in the observations
+        """
+        if dragon in self.detected_dragons:#we have already detected this dragon
+            return
+        self.detected_dragons.add(dragon)
+        x, y = dragon
+        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            nx, ny = x + dx, y + dy#the coordination of the current tile we update
+            if 0 <= nx < self.m and 0 <= ny < self.n:
+                self.variables[f"score(Tile_{nx}_{ny})"] = self.variables[f"score(Tile_{nx}_{ny})"] - 1
+                if self.variables[f"score(Tile_{nx}_{ny})"]<=1 and not self.variables[f"visited(Tile_{nx}_{ny})"] :#visited is initialized to False so it is True if we indeed visited this tile
+                    self.variables[f"score(Tile_{nx}_{ny})"]=float("-inf")
 
     def get_next_action(self, observations):
         """
@@ -261,199 +305,115 @@ class GringottsController:
         Never returns wait action.
         """
         # Update knowledge base from observations
-        vault = None
-        #dragon = None
+        vaults = []
+        dragons = []
         flag_Sulfur = False
         if observations:
             for obs in observations:
                 obs_type = obs[0]
                 if obs_type == 'vault':
-                    vault = obs[1]
-                    self.vault_Update(vault)
+                    vaults.append(obs[1])
+                    self.vault_Update(obs[1])
                 elif obs_type == 'dragon':
-                    dragon = obs[1]
-                    self.dragon_Update(dragon)
+                    dragons.append(obs[1])
+                    self.dragon_Update(obs[1])
+                    #self.update_score(obs[1])  #update each tile that is near a dragon
                 elif obs_type == 'sulfur':
                     flag_Sulfur = True
 
-        if not flag_Sulfur:
-            self.trap_Update()
-
+        self.trap_Update(flag_Sulfur)#update the traps state after an observation
+        if dragons:
+            for dragon in dragons:
+                self.update_score(dragon)
         # Get current possible actions
         possible_actions = self.get_possible_actions()
         if not possible_actions:
-            print(("move", self.current_place))
-            return ("move", self.current_place)  # Stay in place if no other options
+            return ('wait', )#if there is no option then wait
+        # if not possible_actions:
+        #     print(("wait", self.current_place))
+        #     return "wait", self.current_place  # Stay in place if no other options
 
         # Priority 1: Collect if at vault
         if ("collect",) in possible_actions:
             self.checked_vault_Update(self.current_place)
-            print(("collect",))
-            return ("collect",)
+            #print(("collect",))
+            return "collect",
 
-        # Priority 2: Move to adjacent unchecked vault
-        if vault and not self.variables[f"checked_vault(Tile_{vault[0]}_{vault[1]})"]:
-            for action in possible_actions:
-                if action[0] == "move" and action[1] == vault:
-                    self.harry_Update(vault)
-                    print(action)
-                    return action
-                elif action[0] == "destroy" and action[1] == vault:
-                    self.destroy_trap(vault)
-                    print(action)
-                    return action
+        # Priority 2: Move to the best adjacent unchecked vault
+        unchecked_vault_actions = [action for action in possible_actions
+                                   if action[0] in ["move", "destroy"] and
+                                   self.variables[f"vault(Tile_{action[1][0]}_{action[1][1]})"] and
+                                   not self.variables[f"checked_vault(Tile_{action[1][0]}_{action[1][1]})"]]
 
-            # Priority 3: Move towards nearest unvisited tile
-        next_target = self.get_direction_to_nearest_unvisited(self.current_place[0], self.current_place[1])
-        if next_target:
+        if unchecked_vault_actions:
+            # בחר את הכספת עם הציון הטוב ביותר
+            best_vault = self.next_tile(unchecked_vault_actions)
+            if best_vault:
+                for action in unchecked_vault_actions:
+                    if action[1] == best_vault:
+                        if action[0] == "move":
+                            self.harry_Update(best_vault)
+                            #print(action)
+                            return action
+                        elif action[0] == "destroy":
+                            self.destroy_trap(best_vault)
+                            #print(action, "1")
+                            return action
+
+        # Priority 3: Move towards nearest unvisited tile
+        next_target_to_vault = self.get_direction_to_nearest_unvisited_vault(self.current_place[0], self.current_place[1])
+        if next_target_to_vault:
             for action in possible_actions:
-                if action[0] == "move" and action[1] == next_target:
-                    self.harry_Update(next_target)
+                if action[0] == "move" and action[1] == next_target_to_vault:
+                    self.harry_Update(next_target_to_vault)
+                    #print(action, "*")
                     return action
-                elif action[0] == "destroy" and action[1] == next_target:
+                elif action[0] == "destroy" and action[1] == next_target_to_vault:
                     self.destroy_trap(action[1])
+                    #print(action, "2")
                     return action
 
-        # Priority 3.5: Move to tiles we don't have knowledge about them:--Elad work
-        next_action = self.get_next_tile_to_move(possible_actions)#TODO:need to fix -backtracing problem
-        if next_action:
-            if next_action[0] == "move":
-                self.harry_Update(next_action)
-            elif next_action[0] == "destroy":
-                self.destroy_trap(next_action[1])
-            print(next_action)
-            return next_action
-        else:
-            target_tile=self.find_next_tile_distanced(self.current_place)#assumed there is a tile we didn't reached and discovered because the game didn't end
-
-        # # Priority 3: Move towards nearest unvisited tile--Matar work
-        #next_target = self.get_direction_to_nearest_unvisited(self.current_place[0], self.current_place[1])
-        next_target=self.find_closest_tile(target_tile, possible_actions)
-        if next_target:
+        #priority 4: Move towards the new best tile possible with the scoring rule:
+        next_best_tile = self.next_tile(possible_actions)
+        if next_best_tile:
             for action in possible_actions:
-                if action[0] == "move" and action[1] == next_target:
-                    self.harry_Update(next_target)
-                    print(action)
+                if action[0] == "move" and action[1] == next_best_tile:
+                    self.harry_Update(next_best_tile)
+                    #print(action, "*")
                     return action
-                elif action[0] == "destroy" and action[1] == next_target:
+                elif action[0] == "destroy" and action[1] == next_best_tile:
                     self.destroy_trap(action[1])
-                    print(action)
+                    #print(action, "2")
                     return action
 
-        # Priority 4: Destroy any reachable trap
-        for action in possible_actions:
-            if action[0] == "destroy":
-                self.destroy_trap(action[1])
-                print(action)
-                return action
-
-        # Priority 5: Move to any safe location
-        # Prefer unvisited locations
-        unvisited_moves = []
-        fallback_moves = []
-
-        for action in possible_actions:
-            if action[0] == "move":
-                x, y = action[1]
-                if not self.variables[f"visited(Tile_{x}_{y})"]:
-                    unvisited_moves.append(action)
-                else:
-                    fallback_moves.append(action)
-
-        if unvisited_moves:
-            action = unvisited_moves[0]  # Take first unvisited move
-            self.harry_Update(action[1])
-            return action
-
-        if fallback_moves:
-            action = fallback_moves[0]  # Take first available move
-            self.harry_Update(action[1])
-            return action
-
-    def find_next_tile_distanced(self, harry_location):
+    def next_tile(self, possible_actions):
         """
-        Finds the nearest tile (by Manhattan distance) surrounded by the least known tiles.
+        Choose the next best tile to move or destroy.
+        If a real trap is identified, prioritize the tile with the trap for destruction.
+        Returns the coordinates (x, y) of the next tile.
         """
-        min_distance = float('inf')
         best_tile = None
+        best_score = float('-inf')
 
-        for i in range(self.m):
-            for j in range(self.n):
-                if self.variables[f"visited(Tile_{i}_{j})"]:
-                    continue
+        # Check for real traps and prioritize them
+        for action in possible_actions:
+            action_type, coords = action
+            x, y = coords
+            if action_type == "destroy" and self.variables[f"trap(Tile_{x}_{y})"]:
+                # Prioritize the real trap's tile for destruction
+                return (x, y)
 
-                # Count known tiles around this tile
-                for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                    nx, ny = i + dx, j + dy
-                    if 0 <= nx < self.m and 0 <= ny < self.n:
-                        if self.variables[f"visited(Tile_{nx}_{ny})"]:
-                            continue
+        # If no real traps are found, prioritize move actions
+        for action in possible_actions:
+            action_type, coords = action
+            x, y = coords
+            current_score = self.variables[f"score(Tile_{x}_{y})"]
+            if current_score > best_score:
+                best_score = current_score
+                best_tile = (x, y)
 
-                # Calculate Manhattan distance
-                x=harry_location[0]
-                y=harry_location[1]
-                distance = abs(x - i) + abs(y - j)
-
-                # Update best tile based on fewest knowns and shortest distance
-                if  distance < min_distance:
-                    min_distance = distance
-                    best_tile = (i, j)
         return best_tile
 
-    def get_next_tile_to_move(self, possible_moves):
-        """
-        Find the move that leads to a tile surrounded by the least known tiles.
-        """
-        best_move = None
-        flag=False
-        #while not flag:
-        for move in possible_moves:
-            #if move[0] == "move":  # Ensure we're only considering movement actions
-            x, y = move[1]
-            if self.variables[f"visited(Tile_{x}_{y})"]:
-                #flag = True  # it means we already discovered this tile and there is no vault
-                continue
-            # Check surrounding tiles of the current move's target
-            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:#TODO: think about breaking tiles
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < self.m and 0 <= ny < self.n:  # Check bounds
-                    if self.variables[f"visited(Tile_{nx}_{ny})"] and (nx,ny)!=self.current_place:#TODO: fix this line
-                        flag=True#it means we already discovered this tile and there is no vault
-                        break
-            if flag:
-                continue
-            else:
-                best_move = move #it is not really the best move
-                return best_move
-        return best_move
 
-    def find_closest_tile(self, target_tile, possible_actions):
-        """
-        Finds the closest tile to the target_tile based on Manhattan distance
-        from a list of possible actions.
 
-        Args:
-            target_tile (tuple): Coordinates (x, y) of the starting tile.
-            possible_actions (list): List of possible actions as tuples, e.g., [("move", (i, j)), ...].
-
-        Returns:
-            tuple: Coordinates (i, j) of the closest tile from the possible actions,
-                   or None if no valid tile is found.
-        """
-        target_x, target_y = target_tile
-        min_distance = float('inf')
-        closest_tile = None
-
-        for action in possible_actions:
-            if action[0] == "move":  # Only consider move actions
-                tile = action[1]
-                i, j = tile
-                # Calculate Manhattan distance
-                distance = abs(target_x - i) + abs(target_y - j)
-                # Update the closest tile if this one is closer
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_tile = tile
-
-        return closest_tile
 
