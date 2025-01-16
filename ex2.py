@@ -255,7 +255,7 @@ class GringottsController:
         best_neighbor = None
 
         # First, try to find unchecked vaults
-        for i in range(self.m):
+        for i in range(self.m):#TODO: FIX THIS ONE
             for j in range(self.n):
                 if (self.variables[f"vault(Tile_{i}_{j})"] and
                         not self.variables[f"checked_vault(Tile_{i}_{j})"]):
@@ -276,7 +276,7 @@ class GringottsController:
             new_x, new_y = curr_x + dx, curr_y + dy
             if 0 <= new_x < self.m and 0 <= new_y < self.n:
                 # Only consider moves that don't lead to known dangers
-                if not self.variables[f"dragon(Tile_{new_x}_{new_y})"] and not self.variables[f"suspected_trap(Tile_{new_x}_{new_y})"]:#TODO:check without this change
+                if not self.variables[f"dragon(Tile_{new_x}_{new_y})"] : #and not self.variables[f"suspected_trap(Tile_{new_x}_{new_y})"]:#TODO:check without this change
                     new_distance = abs(new_x - target_x) + abs(new_y - target_y) - self.variables[f"score(Tile_{new_x}_{new_y})"]#changed- minimize the score and distance TODO:check
                     possible_next_moves.append(((new_x, new_y), new_distance))
 
@@ -336,7 +336,7 @@ class GringottsController:
         # Priority 1: Collect if at vault
         if ("collect",) in possible_actions:
             self.checked_vault_Update(self.current_place)
-            #print(("collect",))
+            print(("collect",))
             return "collect",
 
         # Priority 2: Move to the best adjacent unchecked vault
@@ -353,11 +353,11 @@ class GringottsController:
                     if action[1] == best_vault:
                         if action[0] == "move":
                             self.harry_Update(best_vault)
-                            #print(action)
+                            print(action)
                             return action
                         elif action[0] == "destroy":
                             self.destroy_trap(best_vault)
-                            #print(action, "1")
+                            print(action, "1")
                             return action
 
         # Priority 3: Move towards nearest unvisited tile
@@ -366,11 +366,11 @@ class GringottsController:
             for action in possible_actions:
                 if action[0] == "move" and action[1] == next_target_to_vault:
                     self.harry_Update(next_target_to_vault)
-                    #print(action, "*")
+                    print(action, "*")
                     return action
                 elif action[0] == "destroy" and action[1] == next_target_to_vault:
                     self.destroy_trap(action[1])
-                    #print(action, "2")
+                    print(action, "2")
                     return action
 
         #priority 4: Move towards the new best tile possible with the scoring rule:
@@ -379,11 +379,11 @@ class GringottsController:
             for action in possible_actions:
                 if action[0] == "move" and action[1] == next_best_tile:
                     self.harry_Update(next_best_tile)
-                    #print(action, "*")
+                    print(action, "*")
                     return action
                 elif action[0] == "destroy" and action[1] == next_best_tile:
                     self.destroy_trap(action[1])
-                    #print(action, "2")
+                    print(action, "2")
                     return action
 
     def next_tile(self, possible_actions):
