@@ -277,8 +277,8 @@ class GringottsController:
             new_x, new_y = curr_x + dx, curr_y + dy
             if 0 <= new_x < self.m and 0 <= new_y < self.n:
                 # Only consider moves that don't lead to known dangers
-                if not self.variables[f"dragon(Tile_{new_x}_{new_y})"] : #and not self.variables[f"suspected_trap(Tile_{new_x}_{new_y})"]:#TODO:check without this change
-                    new_distance = abs(new_x - target_x) + abs(new_y - target_y) - self.variables[f"score(Tile_{new_x}_{new_y})"]#changed- minimize the score and distance TODO:check
+                if not self.variables[f"dragon(Tile_{new_x}_{new_y})"] :
+                    new_distance = abs(new_x - target_x) + abs(new_y - target_y) - self.variables[f"score(Tile_{new_x}_{new_y})"]#changed- minimize the score and distance
                     possible_next_moves.append(((new_x, new_y), new_distance))
 
         if possible_next_moves:
@@ -309,32 +309,6 @@ class GringottsController:
                     if self.variables[f"score(Tile_{nx}_{ny})"] <= 1 and not self.variables[f"visited(Tile_{nx}_{ny})"]:
                         self.variables[f"score(Tile_{nx}_{ny})"] = float('-inf')
 
-
-        else:  # No dragon provided, adjust scores based on visited neighbors
-            curr_x, curr_y = self.current_place
-            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                neighbor_x, neighbor_y = curr_x + dx, curr_y + dy
-                if 0 <= neighbor_x < self.m and 0 <= neighbor_y < self.n:
-                    visited_neighbors = 0
-                    total_neighbors = 0
-                    for dx2, dy2 in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                        nx, ny = neighbor_x + dx2, neighbor_y + dy2
-                        if 0 <= nx < self.m and 0 <= ny < self.n:  # Check bounds
-                            # Exclude tiles with dragons
-                            if not self.variables[f"dragon(Tile_{nx}_{ny})"]:
-                                total_neighbors += 1
-                                if self.variables[f"visited(Tile_{nx}_{ny})"]:
-                                    visited_neighbors += 1
-                                    if (neighbor_x, neighbor_y) not in self.neigbors_tiles:
-                                        self.neigbors_tiles[(neighbor_x, neighbor_y)] = []
-                                        self.neigbors_tiles[(neighbor_x, neighbor_y)].append((nx, ny))
-                                    else:
-                                        if (nx, ny) not in self.neigbors_tiles.get((neighbor_x, neighbor_y)):
-                                            self.neigbors_tiles[(neighbor_x, neighbor_y)].append((nx, ny))
-                    if total_neighbors > 0 and visited_neighbors > 0:
-                        reduction_factor = visited_neighbors / total_neighbors
-                        self.variables[f"score(Tile_{neighbor_x}_{neighbor_y})"] -= reduction_factor
-
     def get_next_action(self, observations):
         """
         Decide next action based on current state and observations.
@@ -358,7 +332,6 @@ class GringottsController:
                     flag_Sulfur = True
 
         self.trap_Update(flag_Sulfur)#update the traps state after an observation
-        self.update_score()#update the score by one to all near neighbors
         if dragons:
             for dragon in dragons:
                 self.update_score(dragon)
