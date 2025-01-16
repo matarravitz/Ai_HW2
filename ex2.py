@@ -13,7 +13,7 @@ class GringottsController:
         self.last_place = None  # New attribute to track the last visited tile
         self.variables = {}
         self.actions = {}
-        self.neigbors_tiles = set()
+        self.neigbors_tiles = {}
         self.harry_initial_loc = harry_loc
         self.detected_dragons = set()  # set of dragons detected in the game
         self.suspected_traps_by_tile = {}
@@ -309,20 +309,31 @@ class GringottsController:
                     if self.variables[f"score(Tile_{nx}_{ny})"] <= 1 and not self.variables[f"visited(Tile_{nx}_{ny})"]:
                         self.variables[f"score(Tile_{nx}_{ny})"] = float('-inf')
 
-        else:  # No dragon provided, process the current tile's neighbors TODO:FIX THIS ONE MATAR!!!
+
+        else:  # No dragon provided, adjust scores based on visited neighbors
             curr_x, curr_y = self.current_place
-
-            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:  # Loop over neighbors of the current tile
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
                 neighbor_x, neighbor_y = curr_x + dx, curr_y + dy
-
-                if 0 <= neighbor_x < self.m and 0 <= neighbor_y < self.n:  # Check bounds
-                    # Scan neighbors of the current neighbor
+                if 0 <= neighbor_x < self.m and 0 <= neighbor_y < self.n:
+                    visited_neighbors = 0
+                    total_neighbors = 0
                     for dx2, dy2 in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
                         nx, ny = neighbor_x + dx2, neighbor_y + dy2
-
-                        if 0 <= nx < self.m and 0 <= ny < self.n:  # Check bounds for the second layer of neighbors
-                            if self.variables[f"visited(Tile_{nx}_{ny})"] and (nx,ny) not in self.neigbors_tiles:  # If the tile was visited
-                                self.variables[f"score(Tile_{neighbor_x}_{neighbor_y})"] -= 0.5
+                        if 0 <= nx < self.m and 0 <= ny < self.n:  # Check bounds
+                            # Exclude tiles with dragons
+                            if not self.variables[f"dragon(Tile_{nx}_{ny})"]:
+                                total_neighbors += 1
+                                if self.variables[f"visited(Tile_{nx}_{ny})"]:
+                                    visited_neighbors += 1
+                                    if (neighbor_x, neighbor_y) not in self.neigbors_tiles:
+                                        self.neigbors_tiles[(neighbor_x, neighbor_y)] = []
+                                        self.neigbors_tiles[(neighbor_x, neighbor_y)].append((nx, ny))
+                                    else:
+                                        if (nx, ny) not in self.neigbors_tiles.get((neighbor_x, neighbor_y)):
+                                            self.neigbors_tiles[(neighbor_x, neighbor_y)].append((nx, ny))
+                    if total_neighbors > 0 and visited_neighbors > 0:
+                        reduction_factor = visited_neighbors / total_neighbors
+                        self.variables[f"score(Tile_{neighbor_x}_{neighbor_y})"] -= reduction_factor
 
     def get_next_action(self, observations):
         """
