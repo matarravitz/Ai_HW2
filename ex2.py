@@ -13,6 +13,7 @@ class GringottsController:
         self.last_place = None  # New attribute to track the last visited tile
         self.variables = {}
         self.actions = {}
+        self.neigbors_tiles = set()
         self.harry_initial_loc = harry_loc
         self.detected_dragons = set()  # set of dragons detected in the game
         self.suspected_traps_by_tile = {}
@@ -284,20 +285,44 @@ class GringottsController:
             return min(possible_next_moves, key=lambda x: x[1])[0]
         return None
 
-    def update_score(self,dragon):
+    def update_score(self, dragon=None):
         """
-        update the score of tile if there is a dragon in the observations
+        Update the score of tiles:
+        If a dragon is provided, reduce scores of its neighbors.
+        Otherwise, scan neighbors of the current tile and reduce scores of their visited neighbors.
         """
-        if dragon in self.detected_dragons:#we have already detected this dragon
-            return
-        self.detected_dragons.add(dragon)
-        x, y = dragon
-        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-            nx, ny = x + dx, y + dy#the coordination of the current tile we update
-            if 0 <= nx < self.m and 0 <= ny < self.n:
-                self.variables[f"score(Tile_{nx}_{ny})"] = self.variables[f"score(Tile_{nx}_{ny})"] - 1
-                if self.variables[f"score(Tile_{nx}_{ny})"]<=1 and not self.variables[f"visited(Tile_{nx}_{ny})"] :#visited is initialized to False so it is True if we indeed visited this tile
-                    self.variables[f"score(Tile_{nx}_{ny})"]=float("-inf")
+        if dragon:  # If a dragon's coordinates are provided
+            if dragon in self.detected_dragons:  # We have already detected this dragon
+                return
+
+            self.detected_dragons.add(dragon)
+            x, y = dragon
+
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:  # Loop over all neighbors
+                nx, ny = x + dx, y + dy  # Coordinates of the current tile we update
+
+                if 0 <= nx < self.m and 0 <= ny < self.n:  # Check bounds
+                    # Reduce the score of the tile by 1
+                    self.variables[f"score(Tile_{nx}_{ny})"] -= 1
+
+                    # If the tile is unvisited and the score drops to 1 or lower, mark it as undesirable
+                    if self.variables[f"score(Tile_{nx}_{ny})"] <= 1 and not self.variables[f"visited(Tile_{nx}_{ny})"]:
+                        self.variables[f"score(Tile_{nx}_{ny})"] = float('-inf')
+
+        else:  # No dragon provided, process the current tile's neighbors TODO:FIX THIS ONE MATAR!!!
+            curr_x, curr_y = self.current_place
+
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:  # Loop over neighbors of the current tile
+                neighbor_x, neighbor_y = curr_x + dx, curr_y + dy
+
+                if 0 <= neighbor_x < self.m and 0 <= neighbor_y < self.n:  # Check bounds
+                    # Scan neighbors of the current neighbor
+                    for dx2, dy2 in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                        nx, ny = neighbor_x + dx2, neighbor_y + dy2
+
+                        if 0 <= nx < self.m and 0 <= ny < self.n:  # Check bounds for the second layer of neighbors
+                            if self.variables[f"visited(Tile_{nx}_{ny})"] and (nx,ny) not in self.neigbors_tiles:  # If the tile was visited
+                                self.variables[f"score(Tile_{neighbor_x}_{neighbor_y})"] -= 0.5
 
     def get_next_action(self, observations):
         """
@@ -317,11 +342,12 @@ class GringottsController:
                 elif obs_type == 'dragon':
                     dragons.append(obs[1])
                     self.dragon_Update(obs[1])
-                    #self.update_score(obs[1])  #update each tile that is near a dragon
+                    self.update_score(obs[1])  #update each tile that is near a dragon
                 elif obs_type == 'sulfur':
                     flag_Sulfur = True
 
         self.trap_Update(flag_Sulfur)#update the traps state after an observation
+        self.update_score()#update the score by one to all near neighbors
         if dragons:
             for dragon in dragons:
                 self.update_score(dragon)
@@ -336,7 +362,7 @@ class GringottsController:
         # Priority 1: Collect if at vault
         if ("collect",) in possible_actions:
             self.checked_vault_Update(self.current_place)
-            print(("collect",))
+            #print(("collect",))
             return "collect",
 
         # Priority 2: Move to the best adjacent unchecked vault
@@ -347,55 +373,69 @@ class GringottsController:
 
         if unchecked_vault_actions:
             # בחר את הכספת עם הציון הטוב ביותר
-            best_vault = self.next_tile(unchecked_vault_actions)
+            best_vault = self.next_tile(unchecked_vault_actions,True)
             if best_vault:
                 for action in unchecked_vault_actions:
                     if action[1] == best_vault:
                         if action[0] == "move":
                             self.harry_Update(best_vault)
-                            print(action)
+                            #print(action)
                             return action
                         elif action[0] == "destroy":
                             self.destroy_trap(best_vault)
-                            print(action, "1")
+                            #print(action, "1")
                             return action
 
-        # Priority 3: Move towards nearest unvisited tile
+        # Priority 3: Move towards nearest unvisited vault
         next_target_to_vault = self.get_direction_to_nearest_unvisited_vault(self.current_place[0], self.current_place[1])
         if next_target_to_vault:
             for action in possible_actions:
                 if action[0] == "move" and action[1] == next_target_to_vault:
                     self.harry_Update(next_target_to_vault)
-                    print(action, "*")
+                    #print(action, "*")
                     return action
                 elif action[0] == "destroy" and action[1] == next_target_to_vault:
                     self.destroy_trap(action[1])
-                    print(action, "2")
+                    #print(action, "2")
                     return action
 
         #priority 4: Move towards the new best tile possible with the scoring rule:
-        next_best_tile = self.next_tile(possible_actions)
+        next_best_tile = self.next_tile(possible_actions,False)
         if next_best_tile:
             for action in possible_actions:
                 if action[0] == "move" and action[1] == next_best_tile:
                     self.harry_Update(next_best_tile)
-                    print(action, "*")
+                    #print(action, "*")
                     return action
                 elif action[0] == "destroy" and action[1] == next_best_tile:
                     self.destroy_trap(action[1])
-                    print(action, "2")
+                    #print(action, "2")
                     return action
 
-    def next_tile(self, possible_actions):
+    def next_tile(self, possible_actions, vaults_comparison):
         """
         Choose the next best tile to move or destroy.
         If a real trap is identified, prioritize the tile with the trap for destruction.
+        If all surrounding tiles are visited or Dead Ends, find the best distant tile to target
+        and take the best immediate step towards it.
         Returns the coordinates (x, y) of the next tile.
         """
         best_tile = None
         best_score = float('-inf')
+        all_visited = True  # Flag to check if all surrounding tiles are visited
 
-        # Check for real traps and prioritize them
+        # Case 1: Compare vaults
+        if vaults_comparison:
+            for action in possible_actions:
+                action_type, coords = action
+                x, y = coords
+                current_score = self.variables[f"score(Tile_{x}_{y})"]
+                if current_score >= best_score:  # Include the case we have a vault in a dead-end tile
+                    best_score = current_score
+                    best_tile = (x, y)
+            return best_tile
+
+        # Case 2: Check for real traps and prioritize them
         for action in possible_actions:
             action_type, coords = action
             x, y = coords
@@ -403,17 +443,59 @@ class GringottsController:
                 # Prioritize the real trap's tile for destruction
                 return (x, y)
 
-        # If no real traps are found, prioritize move actions
+        # Case 3: If all surrounding tiles are visited, find the best distant unvisited tile
         for action in possible_actions:
             action_type, coords = action
             x, y = coords
-            current_score = self.variables[f"score(Tile_{x}_{y})"]
-            if current_score > best_score:
-                best_score = current_score
-                best_tile = (x, y)
+            if not self.variables[f"visited(Tile_{x}_{y})"]:  # If a tile isn't visited, update the flag
+                all_visited = False
+
+        if all_visited:
+            best_distant_tile = None
+            min_distant_score = float('inf')
+            current_x, current_y = self.current_place
+
+            # Step 1: Find the best distant unvisited tile
+            for i in range(self.m):
+                for j in range(self.n):
+                    # Skip tiles with dragons or already visited
+                    if self.variables[f"dragon(Tile_{i}_{j})"] or self.variables[f"visited(Tile_{i}_{j})"]:
+                        continue
+
+                    distant_score = abs(current_x - i) + abs(current_y - j) - self.variables[f"score(Tile_{i}_{j})"]
+
+
+                    if distant_score < min_distant_score:
+                        min_distant_score = distant_score
+                        best_distant_tile = (i, j)
+
+            # Step 2: Find the best immediate step towards the distant tile
+            if best_distant_tile:
+                target_x, target_y = best_distant_tile
+                min_distance = float('inf')
+
+                for action in possible_actions:
+                    action_type, coords = action
+                    x, y = coords
+                    # Calculate the distance to the target
+                    distance_to_target = abs(x - target_x) + abs(y - target_y)
+
+                    if distance_to_target < min_distance:
+                        min_distance = distance_to_target
+                        best_tile = (x, y)
+
+        # Case 4: Check for best scoring tiles if no real traps are found and at least one tile isn't visited
+        if best_tile is None:
+            for action in possible_actions:
+                action_type, coords = action
+                x, y = coords
+                current_score = self.variables[f"score(Tile_{x}_{y})"]
+                if current_score > best_score:
+                    best_score = current_score
+                    best_tile = (x, y)
 
         return best_tile
 
-#הערה
+
 
 
