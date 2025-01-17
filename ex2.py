@@ -13,7 +13,6 @@ class GringottsController:
         self.last_place = None  # New attribute to track the last visited tile
         self.variables = {}
         self.actions = {}
-        self.neigbors_tiles = {}
         self.harry_initial_loc = harry_loc
         self.detected_dragons = set()  # set of dragons detected in the game
         self.suspected_traps_by_tile = {}
@@ -253,24 +252,24 @@ class GringottsController:
         while avoiding the last visited tile.
         """
         min_distance = float('inf')
-        best_neighbor = None
+        vault = None
 
         # First, try to find unchecked vaults
-        for i in range(self.m):#TODO: FIX THIS ONE
+        for i in range(self.m):
             for j in range(self.n):
                 if (self.variables[f"vault(Tile_{i}_{j})"] and
                         not self.variables[f"checked_vault(Tile_{i}_{j})"]):
                     distance = abs(x - i) + abs(y - j)
                     if distance < min_distance:
                         min_distance = distance
-                        best_neighbor = (i, j)
+                        vault = (i, j)
 
-        if best_neighbor is None:
+        if vault is None:
             return None
 
         # Find the best immediate move towards the target while avoiding the last place
         curr_x, curr_y = x, y
-        target_x, target_y = best_neighbor
+        target_x, target_y = vault
 
         possible_next_moves = []
         for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
@@ -479,7 +478,6 @@ class GringottsController:
                     best_tile = (x, y)
 
         return best_tile
-
 
 
 
